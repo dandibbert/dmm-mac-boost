@@ -10,7 +10,7 @@
     "dev": "electron-vite dev",
     "preview": "vite --config vite.preview.config.ts",
     "build": "electron-vite build",
-    "build:mac": "electron-vite build && electron-builder --mac",
+    "build:mac": "electron-vite build && electron-builder --mac --arm64 --x64 --publish never",
     "typecheck": "tsc --noEmit -p tsconfig.node.json && tsc --noEmit -p tsconfig.web.json"
   },
   "dependencies": {

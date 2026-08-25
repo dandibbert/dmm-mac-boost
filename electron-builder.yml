@@ -7,10 +7,18 @@ files:
   - package.json
 mac:
   category: public.app-category.games
+  identity: null
+  notarize: false
+  artifactName: "Pagekeep-${version}-mac-${arch}.${ext}"
   target:
-    - dmg
-    - zip
-  artifactName: "${productName}-${version}-${arch}.${ext}"
+    - target: dmg
+      arch:
+        - arm64
+        - x64
+    - target: zip
+      arch:
+        - arm64
+        - x64
 linux:
   target:
     - dir
