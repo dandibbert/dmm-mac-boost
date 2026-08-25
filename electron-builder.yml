@@ -1,0 +1,16 @@
+appId: app.pagekeep.desktop
+productName: 页游保活
+directories:
+  output: release
+files:
+  - out/**/*
+  - package.json
+mac:
+  category: public.app-category.games
+  target:
+    - dmg
+    - zip
+  artifactName: "${productName}-${version}-${arch}.${ext}"
+linux:
+  target:
+    - dir
