@@ -13,6 +13,7 @@ import {
   prepareSession,
   showGame,
   stopGame,
+  syncGameWindow,
 } from "./windows";
 
 applyChromiumKeepAliveFlags();
@@ -48,6 +49,7 @@ function registerIpc(): void {
   ipcMain.handle("pagekeep:listGames", () => listGames());
   ipcMain.handle("pagekeep:saveGame", (_event, payload) => {
     const game = saveGame(payload);
+    syncGameWindow(game);
     broadcastStatus();
     return game;
   });

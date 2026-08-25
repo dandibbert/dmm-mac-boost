@@ -1,3 +1,4 @@
+import { validateGameInput } from "../../../shared/game";
 import type { AppStatus, Game, PagekeepAPI } from "../../../shared/types";
 
 const PRESETS: Game[] = [
@@ -18,11 +19,11 @@ const PRESETS: Game[] = [
 function readGames(): Game[] {
   try {
     const raw = localStorage.getItem("pagekeep.games");
-    if (!raw) return PRESETS;
+    if (!raw) return PRESETS.map((game) => ({ ...game }));
     const parsed = JSON.parse(raw) as Game[];
-    return parsed.length ? parsed : PRESETS;
+    return parsed.length ? parsed : PRESETS.map((game) => ({ ...game }));
   } catch {
-    return PRESETS;
+    return PRESETS.map((game) => ({ ...game }));
   }
 }
 
@@ -31,13 +32,19 @@ function writeGames(games: Game[]): void {
 }
 
 function createBrowserMock(): PagekeepAPI {
+  let games = readGames();
   let runtimes: AppStatus["runtimes"] = [];
   const listeners = new Set<(status: AppStatus) => void>();
+
+  const persist = (next: Game[]): void => {
+    games = next;
+    writeGames(next);
+  };
 
   const status = (): AppStatus => ({
     runtimes,
     memoryMB: 180 + runtimes.filter((item) => item.running).length * 240,
-    gameCount: readGames().length,
+    gameCount: games.length,
     runningCount: runtimes.filter((item) => item.running).length,
   });
 
@@ -48,36 +55,34 @@ function createBrowserMock(): PagekeepAPI {
 
   return {
     async listGames() {
-      return readGames();
+      return games.map((game) => ({ ...game }));
     },
     async saveGame(input) {
-      const games = readGames();
-      if (input.id) {
-        const index = games.findIndex((game) => game.id === input.id);
+      const parsed = validateGameInput(input);
+      if (parsed.id) {
+        const index = games.findIndex((game) => game.id === parsed.id);
         if (index === -1) throw new Error("找不到这条页游");
-        games[index] = {
-          ...games[index],
-          name: input.name.trim(),
-          url: input.url.trim(),
-          note: (input.note ?? "").trim(),
-        };
-        writeGames(games);
+        const next = games.map((game, i) =>
+          i === index
+            ? { ...game, name: parsed.name, url: parsed.url, note: parsed.note }
+            : game
+        );
+        persist(next);
         emit();
-        return games[index];
+        return { ...next[index] };
       }
       const game: Game = {
         id: crypto.randomUUID(),
-        name: input.name.trim(),
-        url: input.url.trim(),
-        note: (input.note ?? "").trim(),
+        name: parsed.name,
+        url: parsed.url,
+        note: parsed.note,
       };
-      games.push(game);
-      writeGames(games);
+      persist([...games, game]);
       emit();
-      return game;
+      return { ...game };
     },
     async deleteGame(id) {
-      writeGames(readGames().filter((game) => game.id !== id));
+      persist(games.filter((game) => game.id !== id));
       runtimes = runtimes.filter((item) => item.id !== id);
       emit();
     },

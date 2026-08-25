@@ -1,5 +1,6 @@
-import { useEffect, useMemo, useState, type ReactNode } from "react";
+import { useEffect, useMemo, useState, type FormEvent, type ReactNode } from "react";
 import { Plus, Shield, Timer, Waves } from "lucide-react";
+import { validateGameInput } from "../../shared/game";
 import type { AppStatus, Game, GameRuntime } from "../../shared/types";
 import { Button } from "@/components/ui/button";
 import { Dialog } from "@/components/ui/dialog";
@@ -74,12 +75,32 @@ export default function App() {
     }
   };
 
-  const submitForm = async (): Promise<void> => {
-    if (!form) return;
+  const applySaved = (saved: Game): void => {
+    setGames((prev) => {
+      const index = prev.findIndex((game) => game.id === saved.id);
+      if (index === -1) return [...prev, saved];
+      return prev.map((game, i) => (i === index ? saved : game));
+    });
+  };
+
+  const submitForm = async (event?: FormEvent<HTMLFormElement>): Promise<void> => {
+    event?.preventDefault();
+    const fallback = form;
+    const data = event?.currentTarget
+      ? new FormData(event.currentTarget)
+      : null;
+    const payload = {
+      id: fallback?.id,
+      name: String(data?.get("name") ?? fallback?.name ?? ""),
+      url: String(data?.get("url") ?? fallback?.url ?? ""),
+      note: String(data?.get("note") ?? fallback?.note ?? ""),
+    };
     setSaving(true);
     setError("");
     try {
-      await api.saveGame(form);
+      const parsed = validateGameInput(payload);
+      const saved = await api.saveGame(parsed);
+      applySaved(saved);
       setForm(null);
       await refresh();
     } catch (err) {
@@ -192,16 +213,11 @@ export default function App() {
         description="推荐存具体游戏页，而不是 DMM 首页。舰队收藏一类地址通常带 app_id 或游戏域名。"
         onClose={() => setForm(null)}
       >
-        <form
-          className="space-y-4"
-          onSubmit={(event) => {
-            event.preventDefault();
-            void submitForm();
-          }}
-        >
+        <form className="space-y-4" onSubmit={(event) => void submitForm(event)}>
           <div>
             <Label>名称</Label>
             <Input
+              name="name"
               value={form?.name ?? ""}
               placeholder="例如 舰队收藏"
               onChange={(event) => setForm((prev) => (prev ? { ...prev, name: event.target.value } : prev))}
@@ -210,6 +226,7 @@ export default function App() {
           <div>
             <Label>页游地址</Label>
             <Input
+              name="url"
               value={form?.url ?? ""}
               placeholder="https://www.dmm.com/netgame/social/-/gadgets/=/app_id=..."
               onChange={(event) => setForm((prev) => (prev ? { ...prev, url: event.target.value } : prev))}
@@ -218,13 +235,14 @@ export default function App() {
           <div>
             <Label>备注（可选）</Label>
             <Textarea
+              name="note"
               value={form?.note ?? ""}
               placeholder="分辨率、要开的活动页，随你记。"
               onChange={(event) => setForm((prev) => (prev ? { ...prev, note: event.target.value } : prev))}
             />
           </div>
           <div className="flex justify-end gap-2 pt-2">
-            <Button variant="ghost" onClick={() => setForm(null)}>
+            <Button variant="ghost" type="button" onClick={() => setForm(null)}>
               取消
             </Button>
             <Button type="submit" disabled={saving}>

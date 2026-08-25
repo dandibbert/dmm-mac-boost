@@ -86,6 +86,12 @@ export function showGame(id: string): void {
   win.focus();
 }
 
+export function syncGameWindow(game: Game): void {
+  const win = gameWindows.get(game.id);
+  if (!win || win.isDestroyed()) return;
+  win.setTitle(`${game.name} · 页游保活`);
+}
+
 export function openGameWindow(game: Game, preload: string): BrowserWindow {
   const existing = gameWindows.get(game.id);
   if (existing && !existing.isDestroyed()) {

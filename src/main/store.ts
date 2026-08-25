@@ -2,6 +2,7 @@ import { randomUUID } from "node:crypto";
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { app } from "electron";
+import { validateGameInput } from "../shared/game";
 import type { Game } from "../shared/types";
 
 const PRESETS: Game[] = [
@@ -27,19 +28,23 @@ function storePath(): string {
   return join(app.getPath("userData"), "pagekeep.json");
 }
 
+function clonePresets(): Game[] {
+  return PRESETS.map((game) => ({ ...game }));
+}
+
 function readStore(): StoreFile {
   const file = storePath();
   if (!existsSync(file)) {
-    return { games: PRESETS };
+    return { games: clonePresets() };
   }
   try {
     const parsed = JSON.parse(readFileSync(file, "utf8")) as StoreFile;
     if (!Array.isArray(parsed.games) || parsed.games.length === 0) {
-      return { games: PRESETS };
+      return { games: clonePresets() };
     }
     return parsed;
   } catch {
-    return { games: PRESETS };
+    return { games: clonePresets() };
   }
 }
 
@@ -55,28 +60,16 @@ export function listGames(): Game[] {
 
 export function saveGame(input: { id?: string; name: string; url: string; note?: string }): Game {
   const store = readStore();
-  const name = input.name.trim();
-  const url = input.url.trim();
-  if (!name) throw new Error("请填写游戏名称");
-  if (!url) throw new Error("请填写页游地址");
-  try {
-    const parsed = new URL(url);
-    if (parsed.protocol !== "http:" && parsed.protocol !== "https:") {
-      throw new Error("只支持 http/https 地址");
-    }
-  } catch (error) {
-    if (error instanceof Error && error.message.startsWith("只支持")) throw error;
-    throw new Error("地址格式不正确");
-  }
+  const parsed = validateGameInput(input);
 
-  if (input.id) {
-    const index = store.games.findIndex((game) => game.id === input.id);
+  if (parsed.id) {
+    const index = store.games.findIndex((game) => game.id === parsed.id);
     if (index === -1) throw new Error("找不到这条页游");
     const next: Game = {
       ...store.games[index],
-      name,
-      url,
-      note: (input.note ?? "").trim(),
+      name: parsed.name,
+      url: parsed.url,
+      note: parsed.note,
     };
     store.games[index] = next;
     writeStore(store);
@@ -85,9 +78,9 @@ export function saveGame(input: { id?: string; name: string; url: string; note?:
 
   const game: Game = {
     id: randomUUID(),
-    name,
-    url,
-    note: (input.note ?? "").trim(),
+    name: parsed.name,
+    url: parsed.url,
+    note: parsed.note,
   };
   store.games.push(game);
   writeStore(store);
