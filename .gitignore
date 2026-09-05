@@ -1,10 +1,4 @@
-node_modules
-out
-dist
-release
 .DS_Store
-*.log
-.env
-.env.*
-agent-tools
-*.tsbuildinfo
+.build/
+.swiftpm/
+dist/
