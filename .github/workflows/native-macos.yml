@@ -1,0 +1,44 @@
+name: Pagekeep Native
+
+on:
+  push:
+    branches: [native-webkit-browser]
+    paths: ["native/**"]
+  pull_request:
+    paths: ["native/**", ".github/workflows/native-macos.yml"]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: native-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  native:
+    runs-on: macos-15
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - name: Core and runtime regression tests
+        run: |
+          set -o pipefail
+          mkdir -p native/dist
+          swift test --package-path native 2>&1 | tee native/dist/swift-tests.log
+          node native/scripts/test-runtime.mjs | tee native/dist/runtime-tests.log
+      - name: Build universal macOS app
+        run: bash native/scripts/build-app.sh
+      - name: Real WKWebView integration smoke test
+        run: bash native/scripts/smoke-test.sh
+      - name: Upload app and evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: Pagekeep-Native-macOS
+          path: native/dist/*
+          if-no-files-found: warn
+          retention-days: 30
