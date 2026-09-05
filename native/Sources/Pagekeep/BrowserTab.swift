@@ -6,7 +6,7 @@ import WebKitBridge
 
 @MainActor
 final class BrowserTab: NSObject, ObservableObject, Identifiable, WKScriptMessageHandler {
-    var id: UUID { record.id }
+    nonisolated let id: UUID
     @Published var record: TabRecord
     @Published var webView: WKWebView?
     @Published var progress = 0.0
@@ -32,8 +32,10 @@ final class BrowserTab: NSObject, ObservableObject, Identifiable, WKScriptMessag
     private var occlusionDefault = true
     private var noticeGeneration = UUID()
     init(record: TabRecord, configuration: WKWebViewConfiguration? = nil) {
-        self.record = record
-        self.record.compatibility = false; self.record.forceFrames = false
+        var initial = record
+        initial.compatibility = false; initial.forceFrames = false
+        self.id = initial.id
+        self.record = initial
         super.init()
         if configuration != nil || (!record.sleeping && record.url != "about:blank") {
             makeWebView(configuration: configuration)
