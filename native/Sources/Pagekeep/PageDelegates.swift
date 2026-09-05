@@ -32,7 +32,7 @@ extension BrowserTab: WKNavigationDelegate, WKUIDelegate {
         guard let url = action.request.url else { decisionHandler(.cancel); return }
         if ["https", "http", "about", "blob"].contains(url.scheme?.lowercased() ?? "") {
             if action.targetFrame?.isMainFrame == true, ["http", "https"].contains(url.scheme ?? ""),
-               Address.pageKey(webView.url) != Address.pageKey(url) || Address.originKey(webView.url) != Address.originKey(url) {
+               (Address.pageKey(webView.url) != Address.pageKey(url) || Address.originKey(webView.url) != Address.originKey(url)) {
                 applyRule(for: url); applyPolicy()
             }
             decisionHandler(action.shouldPerformDownload ? .download : .allow); return
@@ -43,13 +43,13 @@ extension BrowserTab: WKNavigationDelegate, WKUIDelegate {
         confirm(title: "在外部应用中打开？", message: "此页面希望打开 \(url.scheme ?? "外部") 链接。", accept: "打开") { accepted in if accepted { NSWorkspace.shared.open(url) } }
     }
     func webView(_ webView: WKWebView, decidePolicyFor response: WKNavigationResponse, decisionHandler: @escaping (WKNavigationResponsePolicy) -> Void) { decisionHandler(response.canShowMIMEType ? .allow : .download) }
-    func webView(_ webView: WKWebView, navigationAction: WKNavigationAction, didBecome download: WKDownload) { DownloadCenter.shared.add(download, window: webView.window) }
-    func webView(_ webView: WKWebView, navigationResponse: WKNavigationResponse, didBecome download: WKDownload) { DownloadCenter.shared.add(download, window: webView.window) }
+    func webView(_ webView: WKWebView, navigationAction: WKNavigationAction, didBecome download: WKDownload) { DownloadCenter.shared.add(download, window: presentationWindow) }
+    func webView(_ webView: WKWebView, navigationResponse: WKNavigationResponse, didBecome download: WKDownload) { DownloadCenter.shared.add(download, window: presentationWindow) }
     func webView(_ webView: WKWebView, createWebViewWith configuration: WKWebViewConfiguration, for action: WKNavigationAction, windowFeatures: WKWindowFeatures) -> WKWebView? { openWindow?(configuration, action) }
     func webViewDidClose(_ webView: WKWebView) { closeRequested?() }
     private func origin(_ frame: WKFrameInfo) -> String { "\(frame.securityOrigin.protocol)://\(frame.securityOrigin.host)" }
     private func show(_ alert: NSAlert, completion: @escaping (NSApplication.ModalResponse) -> Void) {
-        if let window = webView?.window { alert.beginSheetModal(for: window, completionHandler: completion) } else { completion(alert.runModal()) }
+        if let window = presentationWindow { alert.beginSheetModal(for: window, completionHandler: completion) } else { completion(alert.runModal()) }
     }
     func confirm(title: String, message: String, accept: String = "确定", completion: @escaping (Bool) -> Void) {
         let alert = NSAlert(); alert.messageText = title; alert.informativeText = message
@@ -69,7 +69,7 @@ extension BrowserTab: WKNavigationDelegate, WKUIDelegate {
     }
     func webView(_ webView: WKWebView, runOpenPanelWith parameters: WKOpenPanelParameters, initiatedByFrame frame: WKFrameInfo, completionHandler: @escaping ([URL]?) -> Void) {
         let panel = NSOpenPanel(); panel.allowsMultipleSelection = parameters.allowsMultipleSelection; panel.canChooseDirectories = parameters.allowsDirectories
-        if let window = webView.window { panel.beginSheetModal(for: window) { completionHandler($0 == .OK ? panel.urls : nil) } } else { completionHandler(panel.runModal() == .OK ? panel.urls : nil) }
+        if let window = presentationWindow { panel.beginSheetModal(for: window) { completionHandler($0 == .OK ? panel.urls : nil) } } else { completionHandler(panel.runModal() == .OK ? panel.urls : nil) }
     }
     func webView(_ webView: WKWebView, requestMediaCapturePermissionFor origin: WKSecurityOrigin, initiatedByFrame frame: WKFrameInfo, type: WKMediaCaptureType, decisionHandler: @escaping (WKPermissionDecision) -> Void) {
         let device = type == .camera ? "摄像头" : (type == .microphone ? "麦克风" : "摄像头与麦克风")
