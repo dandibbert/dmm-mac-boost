@@ -31,7 +31,9 @@ struct AddressField: NSViewRepresentable {
         let field = NSTextField(string: text)
         field.isBordered = false; field.drawsBackground = false; field.focusRingType = .none
         field.font = .systemFont(ofSize: 13); field.placeholderString = "搜索或输入网址"
-        field.delegate = context.coordinator; field.target = context.coordinator; field.action = #selector(Coordinator.commit(_:))
+        field.delegate = context.coordinator
+        // Ending editing must never navigate. Only an explicit Return command submits.
+        field.target = nil; field.action = nil
         field.setAccessibilityLabel("地址栏")
         field.setContentCompressionResistancePriority(.defaultLow, for: .horizontal)
         if text.isEmpty { DispatchQueue.main.async { field.selectText(nil) } }
@@ -39,7 +41,7 @@ struct AddressField: NSViewRepresentable {
     }
     func updateNSView(_ field: NSTextField, context: Context) {
         context.coordinator.parent = self
-        if field.stringValue != text { field.stringValue = text }
+        if !editing && field.stringValue != text { field.stringValue = text }
         if context.coordinator.lastFocus != focusRequest {
             context.coordinator.lastFocus = focusRequest
             DispatchQueue.main.async { field.window?.makeFirstResponder(field); field.selectText(nil) }
@@ -52,7 +54,21 @@ struct AddressField: NSViewRepresentable {
         func controlTextDidBeginEditing(_ notification: Notification) { parent.editing = true }
         func controlTextDidEndEditing(_ notification: Notification) { parent.editing = false }
         func controlTextDidChange(_ notification: Notification) { if let field = notification.object as? NSTextField { parent.text = field.stringValue } }
-        @objc func commit(_ field: NSTextField) { parent.text = field.stringValue; parent.submit(field.stringValue); parent.editing = false; field.window?.makeFirstResponder(nil) }
+        func control(_ control: NSControl, textView: NSTextView, doCommandBy commandSelector: Selector) -> Bool {
+            if commandSelector == NSSelectorFromString("insertNewline:") {
+                if textView.hasMarkedText() { return false }
+                let value = textView.string.trimmingCharacters(in: .whitespacesAndNewlines)
+                guard !value.isEmpty else { return true }
+                parent.text = value; parent.editing = false
+                control.window?.makeFirstResponder(nil)
+                parent.submit(value)
+                return true
+            }
+            if commandSelector == NSSelectorFromString("cancelOperation:") {
+                parent.editing = false; control.window?.makeFirstResponder(nil); return true
+            }
+            return false
+        }
     }
 }
 struct BrowserChrome: View {
@@ -163,7 +179,8 @@ struct NavigationBar: View {
                 Color(nsColor: .separatorColor).opacity(0.45)
                 if tab.loading { GeometryReader { size in Color.accentColor.frame(width: size.size.width * tab.progress) } }
             }.frame(height: 1)
-        }.onChange(of: tab.record.url) { value in if !addressEditing { address = value == "about:blank" ? "" : value } }
+        }.onChange(of: tab.record.url) { _, value in if !addressEditing { address = value == "about:blank" ? "" : value } }
+            .onChange(of: addressEditing) { _, value in if !value { address = tab.record.url == "about:blank" ? "" : tab.record.url } }
     }
 }
 struct TabContent: View {
