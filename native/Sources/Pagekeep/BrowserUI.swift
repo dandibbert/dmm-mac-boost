@@ -6,18 +6,10 @@ import BrowserCore
 
 struct WebSurface: NSViewRepresentable {
     let webView: WKWebView
-    func makeNSView(context: Context) -> NSView { NSView() }
-    func updateNSView(_ view: NSView, context: Context) {
-        guard webView.superview !== view else { return }
-        view.subviews.forEach { $0.removeFromSuperview() }
-        webView.removeFromSuperview(); webView.translatesAutoresizingMaskIntoConstraints = false
-        view.addSubview(webView)
-        NSLayoutConstraint.activate([
-            webView.leadingAnchor.constraint(equalTo: view.leadingAnchor), webView.trailingAnchor.constraint(equalTo: view.trailingAnchor),
-            webView.topAnchor.constraint(equalTo: view.topAnchor), webView.bottomAnchor.constraint(equalTo: view.bottomAnchor)
-        ])
-    }
-    static func dismantleNSView(_ view: NSView, coordinator: ()) { view.subviews.forEach { $0.removeFromSuperview() } }
+    @ObservedObject private var focus = NativeFocus.shared
+    func makeNSView(context: Context) -> NativeGameView { let view = NativeGameView(frame: .zero); view.connect(webView); return view }
+    func updateNSView(_ view: NativeGameView, context: Context) { view.connect(webView); view.region = focus.regions[ObjectIdentifier(webView)] }
+    static func dismantleNSView(_ view: NativeGameView, coordinator: ()) { view.detach() }
 }
 struct ToolButton: View {
     let symbol: String
@@ -134,8 +126,12 @@ struct NavigationBar: View {
     @ObservedObject var tab: BrowserTab
     @ObservedObject var model: BrowserModel
     @ObservedObject var library = LibraryStore.shared
-    @State private var address = ""
+    @State private var address: String
     @State private var addressEditing = false
+    init(tab: BrowserTab, model: BrowserModel) {
+        self.tab = tab; self.model = model
+        _address = State(initialValue: tab.record.url == "about:blank" ? "" : tab.record.url)
+    }
     var body: some View {
         VStack(spacing: 0) {
             HStack(spacing: 4) {
@@ -167,8 +163,7 @@ struct NavigationBar: View {
                 Color(nsColor: .separatorColor).opacity(0.45)
                 if tab.loading { GeometryReader { size in Color.accentColor.frame(width: size.size.width * tab.progress) } }
             }.frame(height: 1)
-        }.onAppear { address = tab.record.url == "about:blank" ? "" : tab.record.url }
-            .onChange(of: tab.record.url) { value in if !addressEditing { address = value == "about:blank" ? "" : value } }
+        }.onChange(of: tab.record.url) { value in if !addressEditing { address = value == "about:blank" ? "" : value } }
     }
 }
 struct TabContent: View {
