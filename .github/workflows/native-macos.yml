@@ -1,22 +1,16 @@
 name: Pagekeep Native
-
 on:
   push:
-    branches: [native-webkit-browser]
-    paths: ["native/**"]
-  pull_request:
-    paths: ["native/**", ".github/workflows/native-macos.yml"]
+    branches: [pagekeep-native-20260905]
+    paths: ['native/**', '.github/workflows/native-macos.yml']
   workflow_dispatch:
-
 permissions:
   contents: read
-
 concurrency:
-  group: native-${{ github.ref }}
+  group: pagekeep-native-${{ github.ref }}
   cancel-in-progress: true
-
 jobs:
-  native:
+  macos:
     runs-on: macos-15
     timeout-minutes: 25
     steps:
@@ -24,21 +18,36 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: 22
-      - name: Core and runtime regression tests
+      - name: Core and isolated-runtime tests
         run: |
           set -o pipefail
           mkdir -p native/dist
           swift test --package-path native 2>&1 | tee native/dist/swift-tests.log
           node native/scripts/test-runtime.mjs | tee native/dist/runtime-tests.log
-      - name: Build universal macOS app
-        run: bash native/scripts/build-app.sh
-      - name: Real WKWebView integration smoke test
+      - name: Build universal native application
+        run: |
+          set -o pipefail
+          bash native/scripts/build-app.sh 2>&1 | tee native/dist/build.log
+      - name: Real WKWebView integration tests
         run: bash native/scripts/smoke-test.sh
-      - name: Upload app and evidence
+      - name: Upload runnable application
+        uses: actions/upload-artifact@v4
+        with:
+          name: Pagekeep-macOS-universal
+          path: |
+            native/dist/Pagekeep-*-macOS-universal.zip
+            native/dist/SHA256SUMS.txt
+          if-no-files-found: error
+          retention-days: 30
+      - name: Upload test evidence
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: Pagekeep-Native-macOS
-          path: native/dist/*
+          name: Pagekeep-test-evidence
+          path: |
+            native/dist/*.log
+            native/dist/*.json
+            native/dist/*.png
+            native/dist/architectures.txt
           if-no-files-found: warn
-          retention-days: 30
+          retention-days: 14
