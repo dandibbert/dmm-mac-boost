@@ -4,11 +4,7 @@ import WebKit
 
 @MainActor
 final class NativeFocus: ObservableObject {
-    struct Region {
-        let rect: CGRect
-        let viewport: CGSize
-        let label: String
-    }
+    struct Region { let rect: CGRect; let viewport: CGSize; let label: String }
     static let shared = NativeFocus()
     @Published private(set) var regions: [ObjectIdentifier: Region] = [:]
     private var requests: [ObjectIdentifier: UUID] = [:]
@@ -20,8 +16,7 @@ final class NativeFocus: ObservableObject {
         if action == "auto" && (!tab.record.autoFocus || regions[id] != nil) { return }
         let request = UUID(); requests[id] = request
         let sourceURL = web.url
-        // Read geometry in an isolated world. No page API replacement, event interception,
-        // node removal, URL changes, or iframe relocation is involved.
+        // Geometry is read in an isolated world. The game DOM and its APIs are not modified.
         let script = """
         (() => {
           const items = [...document.querySelectorAll('iframe,canvas')].map(node => {
@@ -38,15 +33,13 @@ final class NativeFocus: ObservableObject {
         web.evaluateJavaScript(script, in: nil, in: .defaultClient) { [weak self, weak tab, weak web] result in
             guard let self, let tab, let web, tab.webView === web, web.url == sourceURL, self.requests[id] == request else { return }
             guard case .success(let payload) = result, let data = payload as? [String: Any],
-                  let width = data["width"] as? Double, width > 0,
-                  let raw = data["items"] as? [[String: Any]] else {
+                  let width = data["width"] as? Double, width > 0, let raw = data["items"] as? [[String: Any]] else {
                 if action != "auto" { tab.showNotice("暂时无法读取页面布局，请在页面加载完成后重试。") }; return
             }
             let unit = web.bounds.width / width
             let candidates: [(Region, Double)] = raw.compactMap { value in
                 guard let x = value["x"] as? Double, let y = value["y"] as? Double,
-                      let w = value["width"] as? Double, let h = value["height"] as? Double,
-                      let score = value["score"] as? Double else { return nil }
+                      let w = value["width"] as? Double, let h = value["height"] as? Double, let score = value["score"] as? Double else { return nil }
                 let rect = CGRect(x: max(0,x)*unit, y: max(0,y)*unit, width: w*unit, height: h*unit)
                 let viewport = CGSize(width: max(web.bounds.width, rect.maxX), height: max(web.bounds.height, rect.maxY))
                 return (Region(rect: rect, viewport: viewport, label: value["label"] as? String ?? "游戏区域"), score)
@@ -65,20 +58,18 @@ final class NativeFocus: ObservableObject {
                 let finish: (NSApplication.ModalResponse) -> Void = { answer in
                     if answer == .alertFirstButtonReturn, candidates.indices.contains(choices.indexOfSelectedItem) { choose(candidates[choices.indexOfSelectedItem].0) }
                 }
-                if let window = web.window { alert.beginSheetModal(for: window, completionHandler: finish) } else { finish(alert.runModal()) }
+                if let window = tab.presentationWindow { alert.beginSheetModal(for: window, completionHandler: finish) } else { finish(alert.runModal()) }
             } else if first.1 >= 0.65 && (candidates.count == 1 || first.1 - candidates[1].1 >= 0.12) { choose(first.0) }
             else if action != "auto" { tab.showNotice("存在多个可能的游戏区域，请使用“选择游戏区域”。") }
         }
     }
 }
 
-@MainActor
-final class GameClipView: NSView {
+@MainActor final class GameClipView: NSView {
     override var isFlipped: Bool { true }
     override var wantsDefaultClipping: Bool { true }
 }
-@MainActor
-final class NativeGameView: NSView {
+@MainActor final class NativeGameView: NSView {
     private let clip = GameClipView()
     private var web: WKWebView?
     var region: NativeFocus.Region? { didSet { needsLayout = true } }
@@ -89,16 +80,25 @@ final class NativeGameView: NSView {
     }
     required init?(coder: NSCoder) { fatalError("init(coder:) is unavailable") }
     func connect(_ view: WKWebView) {
-        guard web !== view else { return }
-        web?.removeFromSuperview(); web = view; view.removeFromSuperview()
+        BackgroundRenderer.shared.bind(view, to: self)
+        attach(view)
+    }
+    func attach(_ view: WKWebView) {
+        guard web !== view || view.superview !== clip else { return }
+        if let old = web, old !== view, old.superview === clip { old.removeFromSuperview() }
+        web = view; view.removeFromSuperview()
         view.translatesAutoresizingMaskIntoConstraints = true; view.autoresizingMask = []
         clip.addSubview(view); needsLayout = true
     }
-    func detach() { web?.removeFromSuperview(); web = nil }
+    func detach() {
+        guard let old = web else { return }
+        if old.superview === clip { old.removeFromSuperview() }
+        web = nil; BackgroundRenderer.shared.unbind(old, from: self)
+    }
     override func layout() {
         super.layout()
         layer?.backgroundColor = NSColor.windowBackgroundColor.cgColor
-        guard let web, bounds.width > 0, bounds.height > 0 else { return }
+        guard let web, web.superview === clip, bounds.width > 0, bounds.height > 0 else { return }
         if let region, region.rect.width > 0, region.rect.height > 0 {
             let scale = min(bounds.width / region.rect.width, bounds.height / region.rect.height)
             let size = CGSize(width: region.rect.width * scale, height: region.rect.height * scale)
