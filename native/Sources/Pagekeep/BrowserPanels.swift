@@ -56,17 +56,17 @@ struct RuntimePanel: View {
         ScrollView {
             VStack(alignment: .leading, spacing: 16) {
                 Picker("运行模式", selection: Binding(get: { tab.record.mode }, set: { tab.setMode($0) })) { Text("常速").tag(RunMode.continuous); Text("节能").tag(RunMode.eco) }.pickerStyle(.segmented).frame(width: 230)
-                Text(tab.record.mode == .continuous ? "保护后台调度；是否与前台同速，需要用实际游戏验证。" : "允许 WebKit 正常节流或挂起后台页面，不主动卸载页面。").font(.callout).foregroundStyle(.secondary)
+                Text(tab.record.mode == .continuous ? "保持应用活动并关闭可控制的 WebKit 后台限制。不重新加载当前页面。" : "允许 WebKit 正常节流或挂起后台页面，不主动卸载页面。").font(.callout).foregroundStyle(.secondary)
                 Toggle("自动专注游戏区域", isOn: Binding(get: { tab.record.autoFocus }, set: { tab.setAutoFocus($0) }))
-                Toggle("页面可见性兼容", isOn: Binding(get: { tab.record.compatibility }, set: { tab.setCompatibility($0) }))
-                Text("仅当游戏因切换窗口而主动暂停时开启；仅在常速模式生效。").font(.caption).foregroundStyle(.secondary)
-                Toggle("强制后台动画帧（实验性）", isOn: Binding(get: { tab.record.forceFrames }, set: { tab.setForceFrames($0) }))
-                Text("约 60 Hz 的定时器驱动。可能增加耗电或改变动画时序，不保证 GPU 实际绘制 60 帧。").font(.caption).foregroundStyle(.secondary)
+                Text("原生裁切保留原页面与游戏框架。识别失败时可在工具栏菜单中手动选择区域。").font(.caption).foregroundStyle(.secondary)
+                Divider()
+                Text("后台运行边界").font(.headline)
+                Text("此版本不伪装网页可见性，也不替换游戏动画循环。主动在失焦时暂停的游戏，或仍被 WebKit 限制的动画帧，可能无法后台常速。请用实际游戏验证，而不只看开关状态。").font(.callout).foregroundStyle(.secondary)
+                if !tab.unavailable.isEmpty { Text("当前系统未提供：" + tab.unavailable.joined(separator: "、")).font(.caption).foregroundStyle(.orange) }
+                Text(tab.policyApplied ? "页面检测连接正常 · 实际游戏常速尚未验证" : "等待页面检测连接").font(.caption).foregroundStyle(.secondary)
                 Divider()
                 HStack { Text("调度探针").font(.headline); Spacer(); Toggle("检测", isOn: Binding(get: { tab.probeEnabled }, set: { tab.setProbe($0) })).toggleStyle(.switch).fixedSize() }
-                Text("检测会额外运行计时器与动画回调。结果属于合成探针，不代表游戏进度；关闭后停止采样。").font(.caption).foregroundStyle(.secondary)
-                if !tab.unavailable.isEmpty { Text("当前系统未提供：" + tab.unavailable.joined(separator: "、")).font(.caption).foregroundStyle(.orange) }
-                Text(tab.policyApplied ? "页面策略已应用 · 实际游戏常速尚未验证" : "等待页面确认策略").font(.caption).foregroundStyle(.secondary)
+                Text("按需测量原生计时器与动画回调。探针不修改网页 API，不代表游戏进度，关闭后停止采样。").font(.caption).foregroundStyle(.secondary)
                 if tab.probeEnabled {
                     TimelineView(.periodic(from: .now, by: 1)) { context in
                         VStack(alignment: .leading, spacing: 8) {
@@ -85,12 +85,12 @@ struct RuntimePanel: View {
                     }
                 }
                 Button("复制脱敏检测报告") {
-                    var lines = ["Pagekeep 0.2.1", "系统：\(ProcessInfo.processInfo.operatingSystemVersionString)", "页面：\(Address.pageKey(URL(string: tab.record.url)))", "模式：\(tab.record.mode.rawValue)", "策略已应用：\(tab.policyApplied)", "缺失能力：\(tab.unavailable.joined(separator: ", "))", "注意：合成探针，不是实际游戏进度。"]
+                    var lines = ["Pagekeep 0.2.1", "系统：\(ProcessInfo.processInfo.operatingSystemVersionString)", "页面：\(Address.pageKey(URL(string: tab.record.url)))", "模式：\(tab.record.mode.rawValue)", "检测已连接：\(tab.policyApplied)", "缺失能力：\(tab.unavailable.joined(separator: ", "))", "注意：合成探针，不是实际游戏进度。"]
                     for key in tab.samples.keys.sorted() { if let (sample, _, _) = tab.samples[key] { lines.append(String(format: "%@: timer=%.2fHz raf=%.2fHz maxGap=%.2fs elapsed=%.1fs", key, sample.ticksPerSecond, sample.framesPerSecond, sample.largestGap, sample.elapsed)) } }
                     NSPasteboard.general.clearContents(); NSPasteboard.general.setString(lines.joined(separator: "\n"), forType: .string)
                 }
             }.padding(20)
-        }.onDisappear { tab.setProbe(false) }
+        }
     }
 }
 struct DownloadsPanel: View {
