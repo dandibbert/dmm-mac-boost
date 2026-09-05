@@ -1,0 +1,91 @@
+name: Build Still
+on:
+  push:
+    branches: [still-rebuild]
+  workflow_dispatch:
+permissions:
+  contents: read
+concurrency:
+  group: still-build-${{ github.ref }}
+  cancel-in-progress: true
+jobs:
+  macos:
+    runs-on: macos-15
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - name: Validate bundled JavaScript
+        run: |
+          node --check Resources/Runtime.js
+          node --check Resources/Viewport.js
+      - name: Compile and package universal app
+        run: |
+          set -o pipefail
+          mkdir -p out
+          bash scripts/build.sh 2>&1 | tee out/build.log
+      - name: Native application integration tests
+        run: |
+          set -euo pipefail
+          mkdir -p out/tests
+          out/Still.app/Contents/MacOS/Still --self-test "$PWD/out/tests" >out/tests/runtime.log 2>&1 &
+          APP_PID=$!
+          ( sleep 3; screencapture -x out/tests/desktop.png || true ) &
+          WATCHDOG_PID=$!
+          for i in $(seq 1 120); do
+            if ! kill -0 "$APP_PID" 2>/dev/null; then break; fi
+            sleep 1
+          done
+          if kill -0 "$APP_PID" 2>/dev/null; then
+            kill "$APP_PID" || true
+            echo 'Application integration test timed out'
+            cat out/tests/runtime.log
+            exit 1
+          fi
+          RESULT=0
+          wait "$APP_PID" || RESULT=$?
+          wait "$WATCHDOG_PID" || true
+          cat out/tests/runtime.log
+          exit "$RESULT"
+      - name: Upload ready-to-run app
+        uses: actions/upload-artifact@v4
+        with:
+          name: Still-macOS-universal
+          path: |
+            out/Still-macOS-universal.zip
+            out/SHA256SUMS.txt
+          if-no-files-found: error
+          retention-days: 30
+      - name: Upload build and test evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: Still-test-results
+          path: |
+            out/build.log
+            out/tests/
+          retention-days: 14
+  retire-legacy:
+    name: Retire explicitly identified legacy branches
+    needs: macos
+    if: github.event_name == 'push' && contains(github.event.head_commit.message, '[retire-legacy]')
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.sha }}
+          persist-credentials: false
+      - name: Remove legacy branch contents and references
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: python3 scripts/retire_legacy.py
+      - name: Preserve exact retirement results
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: Still-branch-retirement
+          path: out/branch-retirement.json
+          if-no-files-found: error
+          retention-days: 30
